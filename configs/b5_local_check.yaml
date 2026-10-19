@@ -1,0 +1,23 @@
+# Integration check: full B5 at local resolution, Windows multiprocessing.
+seed: 42
+data_root: data/farm
+split_dir: splits
+preprocessing: splits/preprocessing.json
+pretrained: models/mit-b5
+random_init: false
+run_dir: runs/b5_local_verified
+image_size: 256
+batch_size: 1
+accumulation_steps: 2
+epochs: 1
+learning_rate: 0.00006
+weight_decay: 0.01
+warmup_epochs: 0
+patience: 5
+num_workers: 2
+amp: true
+device: cuda
+freeze_encoder: false
+boundary_weight: 0.0
+max_train_batches: 2
+max_val_batches: 2

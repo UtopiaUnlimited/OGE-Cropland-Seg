@@ -1,0 +1,52 @@
+{
+  "seed": 42,
+  "strategy": "foreground-stratified image split; identical images grouped",
+  "spatial_warning": "No source-region metadata supplied. Random image splitting cannot rule out spatial adjacency leakage.",
+  "counts": {
+    "train": 719,
+    "val": 91,
+    "test": 90
+  },
+  "foreground_ratio": {
+    "train": 0.30749197629628827,
+    "val": 0.313021230173635,
+    "test": 0.3052586449517144
+  },
+  "total": 900,
+  "global_range": [
+    0,
+    4095
+  ],
+  "crs_values": [
+    "None"
+  ],
+  "duplicate_images": 0,
+  "mask_nodata_note": "Stored nodata=0 is background and is included in loss/metrics.",
+  "preprocessing": {
+    "version": 1,
+    "method": "train_global_percentile_linear",
+    "lower": 0,
+    "upper": 1634,
+    "quantiles": [
+      0.005,
+      0.995
+    ],
+    "channels": [
+      1,
+      2,
+      3
+    ],
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ],
+    "fit_split": "train",
+    "do_reduce_labels": false
+  }
+}

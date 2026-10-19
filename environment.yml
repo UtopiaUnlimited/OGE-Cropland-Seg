@@ -1,0 +1,10 @@
+name: oge-seg
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+variables:
+  PYTHONNOUSERSITE: "1"
+# Install GPU PyTorch separately, then: python -m pip install -e ".[test]"
+# Windows/Linux CUDA 12.4: python -m pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
