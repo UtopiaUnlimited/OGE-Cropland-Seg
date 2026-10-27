@@ -29,6 +29,7 @@ import torch
 from cropland.common import save_json
 from cropland.metrics import BinaryMetrics
 from cropland.train import split_fingerprints
+from scripts.check_input_compatibility import validate_input_compatibility
 
 
 def digest(path):
@@ -81,7 +82,7 @@ def finalize_archive(archive, image_info, validation):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--image", default="oge-cropland-seg:b5-20261027")
+    parser.add_argument("--image", default="oge-cropland-seg:b5-20261027-v2")
     parser.add_argument("--checkpoint", type=Path, default=ROOT / "runs/b5_server/best.pt")
     parser.add_argument("--reference", type=Path, help="Optional local TIFF predictions for pixel agreement")
     parser.add_argument("--base-image", help="Optional pinned official base image tag/digest")
@@ -213,6 +214,8 @@ def main():
                       reference_pixel_agreement=1-comparison_differences/pixels if args.reference else None,
                       docker_run_arguments=command,
                       tested_at_utc=datetime.now(timezone.utc).isoformat())
+    validation["input_compatibility"] = validate_input_compatibility(
+        args.image, work, images / rows[0]["filename"], output / rows[0]["filename"])
     save_json(work / "validation.json", validation)
     print(json.dumps(validation["metrics"], indent=2), flush=True)
     run(["docker", "container", "rm", name])

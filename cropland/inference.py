@@ -1,7 +1,10 @@
-"""Offline OGE inference: test/images/*.tif -> same-name uint8 0/1 GeoTIFFs."""
+"""Offline OGE inference: RGB images under test/images -> same-name uint8 0/1 GeoTIFFs."""
 from __future__ import annotations
 
 import argparse
+from collections import Counter
+import json
+import os
 import tempfile
 import warnings
 from pathlib import Path
@@ -11,11 +14,50 @@ import rasterio
 from rasterio.errors import NotGeoreferencedWarning
 from rasterio.windows import Window
 import torch
-from tqdm import tqdm
 
 from .common import get_device
 from .data import normalize, scale_rgb
 from .model import load_checkpoint
+
+
+IMAGE_SUFFIXES = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+
+
+def discover_images(dataset):
+    """Follow the official image boundary; never search sibling masks/train folders."""
+    dataset = Path(dataset)
+    image_dir = dataset / "test" / "images"
+    if not image_dir.is_dir():
+        entries = sorted(p.name for p in dataset.iterdir())[:20] if dataset.is_dir() else []
+        raise FileNotFoundError(f"Expected image directory: {image_dir}; dataset entries (up to 20): {entries}")
+    paths, samples, extensions = [], [], Counter()
+    def walk_error(error):
+        raise error
+    for directory, folders, files in os.walk(image_dir, onerror=walk_error):
+        folders.sort()
+        for name in sorted(files):
+            path = Path(directory) / name
+            extensions[path.suffix.lower() or "<no extension>"] += 1
+            if len(samples) < 20:
+                samples.append(path.relative_to(image_dir).as_posix())
+            if path.suffix.lower() in IMAGE_SUFFIXES and path.is_file():
+                paths.append(path)
+    print("INPUT_DISCOVERY " + json.dumps(dict(
+        version="input-compat-v2", image_dir=str(image_dir), recursive=True,
+        supported_extensions=sorted(IMAGE_SUFFIXES), extension_counts=dict(extensions),
+        image_count=len(paths), sample_files=samples), ensure_ascii=False), flush=True)
+    if not paths:
+        raise ValueError(f"No supported images under {image_dir}; "
+                         f"extensions={dict(extensions)}; sample_files={samples}. "
+                         "Expected TIFF/PNG/JPG RGB images, including subdirectories.")
+    names = {}
+    for path in sorted(paths):
+        key = path.stem.casefold()
+        if key in names:
+            raise ValueError(f"Duplicate output name {path.stem}.tif: {names[key]} and {path}. "
+                             "OGE requires flat outputs; input stems must be unique.")
+        names[key] = path
+    return sorted(paths)
 
 
 def starts(length, tile, stride):
@@ -42,7 +84,8 @@ def predict_file(model, prep, source, destination, device, tile_size=512, overla
     # Disk-backed sums bound RAM usage for large rasters. The temporary directory is removed after each image.
     with rasterio.open(source) as src, tempfile.TemporaryDirectory(prefix="oge-infer-", dir=destination.parent) as tmp:
         if src.count != 3:
-            raise ValueError(f"Expected 3-band RGB: {source}")
+            raise ValueError(f"Expected 3-band RGB: {source}; "
+                             f"driver={src.driver}, bands={src.count}, dtypes={src.dtypes}")
         shape = (src.height, src.width)
         sums = np.memmap(Path(tmp) / "sum.dat", dtype="float32", mode="w+", shape=shape)
         counts = np.memmap(Path(tmp) / "count.dat", dtype="float32", mode="w+", shape=shape)
@@ -93,22 +136,31 @@ def main():
     parser.add_argument("--threshold", type=float, default=.5)
     args = parser.parse_args()
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
-    image_dir = args.input_dataset / "test/images"
-    if not image_dir.is_dir():
-        raise FileNotFoundError(f"Expected official dataset structure: {image_dir}")
-    paths = sorted(p for p in image_dir.iterdir() if p.suffix.lower() in {".tif", ".tiff"})
-    if not paths:
-        raise ValueError("No TIFF images found")
-    if len({p.stem for p in paths}) != len(paths):
-        raise ValueError("Duplicate TIFF stems would overwrite output files")
+    paths = discover_images(args.input_dataset)
     device = get_device(args.device)
     torch.set_num_threads(min(torch.get_num_threads(), 8))
     model, checkpoint = load_checkpoint(args.pretrained, device)
     prep, size = checkpoint["preprocessing"], args.tile_size or checkpoint["config"]["image_size"]
     del checkpoint
-    for source in tqdm(paths, desc="Offline inference"):
+    print("MODEL " + json.dumps(dict(tile_size=size, overlap=args.overlap,
+          threshold=args.threshold, preprocessing=prep, device=str(device))), flush=True)
+    warned_uint8 = False
+    for index, source in enumerate(paths, 1):
+        with rasterio.open(source) as src:
+            sample = src.read(window=Window(0, 0, min(64, src.width), min(64, src.height)))
+            print("INPUT_IMAGE " + json.dumps(dict(index=index, total=len(paths),
+                  filename=source.relative_to(args.input_dataset).as_posix(),
+                  driver=src.driver, width=src.width, height=src.height, bands=src.count,
+                  dtypes=src.dtypes, sample_min=float(sample.min()),
+                  sample_max=float(sample.max())), ensure_ascii=False), flush=True)
+            if "uint8" in src.dtypes and prep["upper"] > 255 and not warned_uint8:
+                print("INPUT_NOTE: uint8 input differs from the uint16 training data. "
+                      "Keeping checkpoint preprocessing unchanged; the platform's "
+                      "radiometric conversion and official accuracy are unverified.", flush=True)
+                warned_uint8 = True
         predict_file(model, prep, source, args.output_dir / (source.stem + ".tif"),
                      device, size, args.overlap, args.threshold)
+    print(f"INFERENCE_COMPLETE images={len(paths)} output_dir={args.output_dir}", flush=True)
 
 
 if __name__ == "__main__":

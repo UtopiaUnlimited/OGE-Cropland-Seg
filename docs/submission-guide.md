@@ -21,7 +21,7 @@
 
 | 项目 | 官方要求 / 本项目实现 |
 | --- | --- |
-| 输入 | 平台传入 DATASET，影像位于 DATASET/test/images/*.tif |
+| 输入 | 平台传入 DATASET，RGB影像位于 DATASET/test/images/；支持 TIFF、PNG、JPG/JPEG 及子目录 |
 | 输出 | 直接写到 OUTPUT/img1.tif 等，不再嵌套 test/images |
 | 类型与类别 | 单波段 uint8；0=背景，1=耕地；原尺寸、原坐标参考 |
 | 启动 | 必须有 ENTRYPOINT，权重路径由镜像内部固定 |
@@ -40,7 +40,7 @@
 
     docker run [平台的GPU及挂载等参数] your_image:tag --input_dataset /input --output_dir /output
 
---input_dataset 指的是包含 test/images 的父目录，不是 images 目录本身。固定预测阈值0.5，窗口512，默认重叠0.25，不使用TTA或后处理。
+--input_dataset 指的是包含 test/images 的父目录，不是 images 目录本身。固定预测阈值0.5，窗口512，默认重叠0.25，不使用TTA或后处理。输入须为3波段RGB；所有图片主文件名（不含扩展名，不区分大小写）必须唯一，以避免平铺输出重名。
 
 ## 一键构建、断网验证与导出
 
@@ -59,13 +59,14 @@
 5. 使用 --network none、8 CPU、32GB内存上限、16GB共享内存运行全部90张内部测试图。本地WSL宿主机可用内存可能低于配置上限；这不等于实际提供了32GB物理内存。
 6. 额外使用只读容器根文件系统，只将输出目录和临时目录设为可写。该设置比官方普通可写层更严格，但不等于实测了A30或平台20G存储驱动配额。
 7. 校验输出文件名、尺寸、空间参考、编码，计算内部测试指标；指定参考目录时记录跨环境像素一致率。
-8. docker save 导出 .tar，核对归档的运行配置和文件系统层，再用 docker load 重新导入核验，生成SHA256校验和与说明清单。
+8. 再运行9张兼容性样例，覆盖大写扩展名、嵌套目录、16位PNG、8位PNG/JPG/JPEG，比较无损转换和解码后相同像素的TIFF结果；确认不读取旁边的masks。8位样例只检验格式兼容性，不用于精度评估。
+9. docker save 导出 .tar，核对归档的运行配置和文件系统层，再用 docker load 重新导入核验，生成SHA256校验和与说明清单。
 
 默认输出：
 
-    submission/oge-cropland-seg_b5-20261027.tar
-    submission/oge-cropland-seg_b5-20261027.sha256
-    submission/oge-cropland-seg_b5-20261027.manifest.json
+    submission/oge-cropland-seg_b5-20261027-v2.tar
+    submission/oge-cropland-seg_b5-20261027-v2.sha256
+    submission/oge-cropland-seg_b5-20261027-v2.manifest.json
 
 其中只有 .tar 需要上传模型页面；.sha256 和 .manifest.json 留作核验记录。每次验证的构建日志、推理日志、输出TIFF和Linux依赖列表保存在 submission/validation_日期时间/。
 
@@ -81,10 +82,10 @@
 
 1. 登录开放地球引擎，进入 AI中心 → 快速推理。
 2. 点击“新建个人模型”。
-3. 模型名称可填写 OGE-Cropland-Seg-B5-512-v1。
+3. 模型名称可填写 OGE-Cropland-Seg-B5-512-v2。
 4. 描述可填写：“基于SegFormer-B5的耕地二值分割，输入512像素窗口，输出原尺寸0/1 TIFF，离线GPU推理。内部保留测试集成绩不代表官方测试成绩。”
 5. 上传已经通过本地验证的 .tar 文件，点击“创建个人模型”，等待显示上传成功。
-6. 点击模型卡片右下角“快速推理”，填写任务名称，例如 B5-512-v1-first-test，确认执行。官方测试样本由平台固定提供，不需要上传本地数据集。
+6. 点击模型卡片右下角“快速推理”，填写任务名称，例如 B5-512-v2-first-test，确认执行。官方测试样本由平台固定提供，不需要上传本地数据集。
 7. 在个人中心 → 模型训练 → 快速推理结果管理中查看状态、日志和官方评估结果。
 
 2026-09-29培训提到每天3次推理额度，当前次数以平台提示为准。应先完成本地断网验证，再使用平台额度。
@@ -102,27 +103,37 @@ Git不包含 data/、models/、runs/、outputs/、submission/。要重新构建�
 - 服务器需要已有可用Docker和NVIDIA Container Toolkit；这两项属于宿主机配置，tar不能替代显卡驱动。
 - 不要尝试将Windows的Conda环境直接拷入Linux镜像。
 
+## v1 线上失败与 v2 修复
+
+2026-10-27，v1 线上日志报 No TIFF images found。该异常说明 test/images 目录存在，但原程序只在第一层查找 .tif/.tiff，没有找到匹配文件。官方示例还接受 .png/.jpg/.jpeg。v2 补齐这些格式并递归扫描 images 内部，加入 INPUT_DISCOVERY、INPUT_IMAGE 和 INFERENCE_COMPLETE 日志。仅凭旧日志不能断定线上实际是 PNG 还是子目录。
+
+请新建名称含 v2 的模型并上传 v2 tar；再次点击旧模型不会自动采用本地修复。旧 tar 保留作历史记录，不要继续用它提交。
+
+权重、512窗口、阈值和预处理保持原样。如果日志出现 INPUT_NOTE（uint8输入），表示与训练数据位深不同。代码不会猜测平台如何做辐射转换；若线上分数异常，应结合实际输入格式及平台转换规则调查，不应根据文件扩展名随意调整归一化。
+
+如果仍失败，请复制完整日志，尤其是 INPUT_DISCOVERY 和首条 INPUT_IMAGE，以便区分空挂载、未知格式、波段数或其他运行错误。
+
 ## 手动检查与故障处理
 
 基础检查：
 
     docker version
     docker info
-    docker image inspect oge-cropland-seg:b5-20261027
+    docker image inspect oge-cropland-seg:b5-20261027-v2
 
 快速查看入口帮助（无需GPU）：
 
-    docker run --rm --network none oge-cropland-seg:b5-20261027 --help
+    docker run --rm --network none oge-cropland-seg:b5-20261027-v2 --help
 
 若镜像已构建，但自动化脚本因路径或主机工具问题中止，可按以下步骤排查。只有实际通过断网推理后再上传：
 
-    docker run --rm --network none --gpus all --cpus 8 --memory 32g --shm-size 16g --mount type=bind,source=输入目录绝对路径,target=/input,readonly --mount type=bind,source=输出目录绝对路径,target=/output oge-cropland-seg:b5-20261027 --input_dataset /input --output_dir /output
+    docker run --rm --network none --gpus all --cpus 8 --memory 32g --shm-size 16g --mount type=bind,source=输入目录绝对路径,target=/input,readonly --mount type=bind,source=输出目录绝对路径,target=/output oge-cropland-seg:b5-20261027-v2 --input_dataset /input --output_dir /output
 
 Windows路径包含空格时，将每个完整的 --mount 参数用双引号包住；输入目录应包含 test/images，输出目录需事先创建且为空。
 
 手动导出（不要使用 docker export，它导出容器文件系统，不能替代包含ENTRYPOINT等配置的镜像归档）：
 
-    docker save --output submission/oge-cropland-seg_b5-20261027.tar oge-cropland-seg:b5-20261027
+    docker save --output submission/oge-cropland-seg_b5-20261027-v2.tar oge-cropland-seg:b5-20261027-v2
 
 | 问题 | 处理 |
 | --- | --- |

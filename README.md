@@ -103,13 +103,15 @@ python -m cropland.evaluate --checkpoint runs/b5_local/best.pt --split val --out
 
 输出全局混淆矩阵指标、逐图 CSV 和预测掩膜。添加 --save-png 可输出原图/真值/预测/误差四栏 PNG 及离线 gallery.html；原图显示采用训练集确定的固定拉伸范围，不更改原始 TIFF。metrics.json 同时记录模型 SHA256、最佳轮次和推理协议。内部 test 仅在方案固定后使用 --split test，不用于调参。--limit 2 是快速检查，结果标记 partial。
 
-官方输入必须是 `<输入目录>/test/images/*.tif`：
+官方影像位于 `<输入目录>/test/images/`，支持 RGB TIFF、PNG、JPG/JPEG（不区分扩展名大小写）及子目录。输出仍平铺为同名 `.tif`，图片主文件名必须唯一；不会扫描旁边的 masks 或 train 目录：
 
 ```bash
 python -m cropland.inference --pretrained runs/b5_local/best.pt --input_dataset <输入目录> --output_dir outputs/predictions --device auto
 ```
 
 输出同名、原尺寸、单波段 uint8 的 0/1 TIFF，保留空间参考。窗口尺寸默认与训练配置一致，重叠 25%，概率平均再阈值化；拒绝覆盖已有预测。best.pt 内含架构、权重和预处理，推理无需联网或下载 HF 文件。
+
+2026-10-27 的 v1 线上任务报 `No TIFF images found`；v2 补齐官方示例支持的格式、递归发现和输入诊断。旧截图不能确认线上实际格式。预处理仍使用检查点固定参数；若平台输入是经过转换的8位数据，正式精度需平台验证。
 
 Docker 提交已提供 Dockerfile、构建白名单和一键验证导出脚本。运行 python scripts/package_submission.py 可打包最佳权重，进行断网 GPU 推理验证，再导出小于20GB的镜像tar。详见 [提交指南](docs/submission-guide.md) 与 [实际验证记录](docs/submission-validation.md)。
 
