@@ -1,0 +1,11 @@
+# Allowlist: no training images, logs, optimizer state, credentials or Git history.
+**
+!Dockerfile
+!docker/
+!docker/requirements-inference.txt
+!cropland/
+!cropland/*.py
+!submission/
+!submission/build/
+!submission/build/best.pt
+!submission/build/manifest.json
