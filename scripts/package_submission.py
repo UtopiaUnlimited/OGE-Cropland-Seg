@@ -48,6 +48,37 @@ def run(command, log=None):
     return subprocess.check_output(command, cwd=ROOT, text=True, encoding="utf-8", errors="replace")
 
 
+
+def finalize_archive(archive, image_info, validation):
+    """Verify saved runtime/layers for both classic and containerd image stores."""
+    archive = Path(archive)
+    if image_info["Id"] != validation["image_id"]:
+        raise ValueError("The current image is not the validated image")
+    if archive.stat().st_size >= 20_000_000_000:
+        raise ValueError(f"Archive exceeds 20 GB: {archive}")
+    with tarfile.open(archive, "r:") as tar:
+        saved = json.load(tar.extractfile("manifest.json"))
+        matching = [item for item in saved if validation["image_tag"] in (item.get("RepoTags") or [])]
+        if len(matching) != 1:
+            raise ValueError("Unexpected saved image manifest")
+        config = json.load(tar.extractfile(matching[0]["Config"]))
+        if config.get("os") != "linux" or config.get("architecture") != "amd64":
+            raise ValueError("Saved image platform differs")
+        # containerd uses a manifest/index digest as image Id; it is NOT the config digest.
+        if config["rootfs"]["diff_ids"] != image_info["RootFS"]["Layers"]:
+            raise ValueError("Saved filesystem layers differ from the tested image")
+        for key in ("Entrypoint", "Cmd", "Env", "WorkingDir", "User", "Labels"):
+            # Docker inspect may omit empty defaults that the saved OCI config retains.
+            default = {} if key == "Labels" else ([] if key in ("Entrypoint", "Cmd", "Env") else "")
+            if (config["config"].get(key) or default) != (image_info["Config"].get(key) or default):
+                raise ValueError(f"Saved runtime configuration differs: {key}")
+    validation["archive"] = dict(filename=archive.name, bytes=archive.stat().st_size, sha256=digest(archive))
+    save_json(archive.with_suffix(".manifest.json"), validation)
+    archive.with_suffix(".sha256").write_text(
+        validation["archive"]["sha256"] + "  " + archive.name + "\n", encoding="ascii")
+    return validation
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", default="oge-cropland-seg:b5-20261027")
@@ -186,23 +217,17 @@ def main():
     print(json.dumps(validation["metrics"], indent=2), flush=True)
     run(["docker", "container", "rm", name])
     run(["docker", "save", "--output", str(archive), args.image], work / "export.log")
-    if archive.stat().st_size >= 20_000_000_000:
-        raise ValueError(f"Archive exceeds 20 GB: {archive}")
-    # docker save must retain image configuration/ENTRYPOINT, not just a container filesystem.
-    with tarfile.open(archive, "r:") as tar:
-        saved = json.load(tar.extractfile("manifest.json"))
-        if len(saved) != 1 or args.image not in saved[0]["RepoTags"]:
-            raise ValueError("Unexpected saved image manifest")
-        config_bytes = tar.extractfile(saved[0]["Config"]).read()
-        if "sha256:" + hashlib.sha256(config_bytes).hexdigest() != image_info["Id"]:
-            raise ValueError("Exported image differs from the tested image")
-        config = json.loads(config_bytes)
-        if config["config"]["Entrypoint"] != expected_entrypoint:
-            raise ValueError("Export lost the expected ENTRYPOINT")
-    validation["archive"] = dict(filename=archive.name, bytes=archive.stat().st_size, sha256=digest(archive))
+    finalize_archive(archive, image_info, validation)
+    run(["docker", "load", "--input", str(archive)], work / "load.log")
+    loaded = json.loads(run(["docker", "image", "inspect", args.image]))[0]
+    if loaded["RootFS"] != image_info["RootFS"]:
+        raise ValueError("Reloaded image layers differ")
+    for key in ("Entrypoint", "Cmd", "Env", "WorkingDir", "User", "Labels"):
+        if loaded["Config"].get(key) != image_info["Config"].get(key):
+            raise ValueError(f"Reloaded image runtime differs: {key}")
+    validation["archive"]["load_verified"] = True
+    validation["archive"]["loaded_image_id"] = loaded["Id"]
     save_json(archive.with_suffix(".manifest.json"), validation)
-    archive.with_suffix(".sha256").write_text(
-        validation["archive"]["sha256"] + "  " + archive.name + "\n", encoding="ascii")
     print("READY TO UPLOAD:", archive, flush=True)
     print("Archive bytes:", archive.stat().st_size, flush=True)
 
