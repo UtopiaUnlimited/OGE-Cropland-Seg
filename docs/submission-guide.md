@@ -161,3 +161,5 @@ Windows路径包含空格时，将每个完整的 --mount 参数用双引号包�
 - https://docs.docker.com/engine/containers/resource_constraints/
 
 本地构建/验证的实际状态另见 docs/submission-validation.md。只有该记录明确写明验证通过且对应tar存在，才表示本机已产出可上传文件。
+
+E4单独网站测试镜像已打包并通过本地断网验证，上传文件与操作见 [E4网站提交说明](e4-website-submission.md)。组员融合交付ZIP继续保留。

@@ -59,3 +59,5 @@ best.pt自包含模型结构、权重、预处理和来源，加载时不下载H
 校验记录与日志：本地outputs/e4_delivery_check_v2/verification.json、offline.log；最终归档的记录见同目录final_verification.json。Windows交付ZIP约325MB；具体字节和SHA256见旁边的E4_UPerNet.zip.sha256。GitHub不分发ZIP、权重或概率。
 
 本研究所使用的语义分割样本数据来源于OGE平台（http://openge.org.cn/），版权归原作者所有。
+
+E4单独网站测试镜像已打包并通过本地断网验证，上传文件与操作见 [E4网站提交说明](e4-website-submission.md)。组员融合交付ZIP继续保留。

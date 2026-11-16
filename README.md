@@ -145,3 +145,5 @@ python -m cropland.evaluate --checkpoint runs/b5_server/best.pt --split test --o
 ```
 
 已有输出时请指定新目录。2026-10-27 的结果见 [训练测试报告](docs/result-b5-server-20261027.md)；本地可直接打开 outputs/b5_server_test/report.html 或 gallery.html。PNG/预测仍在 outputs 忽略目录中，分享本地报告时需一并复制图片。
+
+E4单独网站测试镜像已打包并通过本地断网验证，上传文件与操作见 [E4网站提交说明](docs/e4-website-submission.md)。组员融合交付ZIP继续保留。

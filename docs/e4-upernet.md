@@ -61,3 +61,5 @@
 - ResNet-50预训练说明：https://huggingface.co/microsoft/resnet-50
 
 本研究所使用的语义分割样本数据来源于OGE平台（http://openge.org.cn/），版权归原作者所有。
+
+E4单独网站测试镜像已打包并通过本地断网验证，上传文件与操作见 [E4网站提交说明](e4-website-submission.md)。组员融合交付ZIP继续保留。

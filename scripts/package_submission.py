@@ -28,7 +28,7 @@ import torch
 
 from cropland.common import save_json
 from cropland.metrics import BinaryMetrics, BoundaryMetrics
-from cropland.train import split_fingerprints
+from cropland.splits import split_fingerprints
 from scripts.check_input_compatibility import validate_input_compatibility
 
 
@@ -86,6 +86,7 @@ def main():
     parser.add_argument("--checkpoint", type=Path, default=ROOT / "runs/b5_server/best.pt")
     parser.add_argument("--reference", type=Path, help="Optional local TIFF predictions for pixel agreement")
     parser.add_argument("--base-image", help="Optional pinned official base image tag/digest")
+    parser.add_argument("--split", choices=["val", "test"], default="test", help="Local split for offline container validation")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-z0-9][a-z0-9._:/-]*", args.image):
         parser.error("Use a lowercase Docker image reference")
@@ -105,6 +106,9 @@ def main():
         created_at_utc=datetime.now(timezone.utc).isoformat(),
         checkpoint_sha256=digest(checkpoint),
         checkpoint_epoch=state["epoch"] + 1,
+        model_type=state.get("model_type", "segformer_b5"),
+        model_config=state["model_config"],
+        pretrained_source=state.get("pretrained_source"),
         validation_iou=state["best_iou"],
         input_size=state["config"]["image_size"],
         boundary=state["boundary"],
@@ -127,7 +131,7 @@ def main():
     images.mkdir(parents=True)
     output = work / "predictions"
     output.mkdir()
-    rows = list(csv.DictReader((ROOT / "splits/test.csv").open(encoding="utf-8")))
+    rows = list(csv.DictReader((ROOT / "splits" / f"{args.split}.csv").open(encoding="utf-8")))
     if not rows or len({r["filename"] for r in rows}) != len(rows):
         raise ValueError("Empty test split or duplicate filenames")
     for row in rows:
@@ -210,7 +214,7 @@ def main():
                         raise ValueError("Reference dimensions differ")
                     comparison_differences += int(np.count_nonzero(a != p))
     validation = dict(image_id=image_info["Id"], image_tag=args.image, image_bytes=image_info["Size"],
-                      checkpoint=manifest, count=len(rows), partial=False,
+                      checkpoint=manifest, split=args.split, count=len(rows), partial=False,
                       metrics={**metrics.compute(), **boundaries.compute()},
                       boundary_tolerance_px=boundaries.tolerance,
                       runtime=runtime, network="none", read_only_root=True, cpus=8,
