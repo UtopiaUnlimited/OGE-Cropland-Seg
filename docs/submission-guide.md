@@ -163,3 +163,5 @@ Windows路径包含空格时，将每个完整的 --mount 参数用双引号包�
 本地构建/验证的实际状态另见 docs/submission-validation.md。只有该记录明确写明验证通过且对应tar存在，才表示本机已产出可上传文件。
 
 E4单独网站测试镜像已打包并通过本地断网验证，上传文件与操作见 [E4网站提交说明](e4-website-submission.md)。组员融合交付ZIP继续保留。
+
+已接入同学提供的E5 FarSeg离线推理并完成单独网站打包，详见 [E5检查及提交说明](e5-website-submission.md)。原始E5 ZIP、权重及概率只保存在本地。

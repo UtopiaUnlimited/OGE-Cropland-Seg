@@ -9,3 +9,6 @@
 !submission/build/
 !submission/build/best.pt
 !submission/build/manifest.json
+!third_party/
+!third_party/e5/
+!third_party/e5/*

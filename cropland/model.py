@@ -42,6 +42,8 @@ def build_model(cfg):
     if cfg.get("model_type") == "upernet_r50":
         from .upernet import build_upernet
         return build_upernet(cfg)
+    if cfg.get("model_type", "segformer_b5") != "segformer_b5":
+        raise ValueError("This shared training entrypoint supports SegFormer/E4. E5 training remains in the supplied E5 ZIP.")
     model = CroplandModel(boundary=cfg["boundary_weight"] > 0)
     if not cfg.get("random_init", False):
         source = Path(cfg["pretrained"])
@@ -71,7 +73,14 @@ def save_checkpoint(path, model, preprocessing, cfg, **state):
 
 def load_checkpoint(path, device="cpu"):
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)
-    if checkpoint.get("format_version") != 1:
+    model_type = checkpoint.get("model_type", "segformer_b5")
+    version = checkpoint.get("format_version")
+    if version == 2 and model_type == "farseg":
+        from .farseg import FarSegModel
+        model = FarSegModel(**checkpoint["model_config"])
+        model.load_state_dict(checkpoint["model"], strict=True)
+        return model.to(device), checkpoint
+    if version != 1 or model_type not in {"segformer_b5", "upernet_r50"}:
         raise ValueError("Unsupported checkpoint format")
     if checkpoint.get("model_type", "segformer_b5") == "upernet_r50":
         from transformers import UperNetConfig
@@ -81,3 +90,13 @@ def load_checkpoint(path, device="cpu"):
         model = CroplandModel(SegformerConfig.from_dict(checkpoint["model_config"]), checkpoint["boundary"])
     model.load_state_dict(checkpoint["model"], strict=True)
     return model.to(device), checkpoint
+
+
+def foreground_probability(output):
+    """Preserve E5's float32 two-class softmax; E2/E4 use one-logit sigmoid."""
+    if "class_logits" in output:
+        logits = output["class_logits"].float()
+        if logits.shape[1] != 2:
+            raise ValueError("Expected background/foreground class logits")
+        return logits.softmax(dim=1)[:, 1:2]
+    return output["logits"].float().sigmoid()

@@ -1,0 +1,34 @@
+# E5: original FarSeg R50, fixed B5 split/preprocessing, effective batch 8.
+# SGD/poly and the foreground-aware loss follow the original FarSeg recipe.
+model_type: farseg
+seed: 42
+data_root: data/farm
+split_dir: splits
+preprocessing: splits/preprocessing.json
+pretrained: models/resnet50
+random_init: false
+run_dir: runs/farseg_e5
+image_size: 512
+batch_size: 8
+accumulation_steps: 1
+epochs: 100
+learning_rate: 0.007
+weight_decay: 0.0001
+warmup_epochs: 0
+patience: 15
+num_workers: 2
+amp: true
+device: cuda
+freeze_encoder: false
+boundary_weight: 0.0
+optimizer: sgd
+momentum: 0.9
+schedule: poly
+poly_power: 0.9
+grad_clip: 35.0
+focal_gamma: 2.0
+# 2,500 microbatches at batch 8 expose about 20,000 images during annealing.
+focal_anneal_steps: 2500
+boundary_tolerance: 2
+max_train_batches: null
+max_val_batches: null

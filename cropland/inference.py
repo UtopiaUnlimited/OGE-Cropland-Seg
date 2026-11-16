@@ -17,7 +17,7 @@ import torch
 
 from .common import get_device
 from .data import normalize, scale_rgb
-from .model import load_checkpoint
+from .model import load_checkpoint, foreground_probability
 
 
 IMAGE_SUFFIXES = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
@@ -99,7 +99,7 @@ def predict_file(model, prep, source, destination, device, tile_size=512, overla
                     a = np.pad(a, ((0, 0), (0, tile_size - height), (0, tile_size - width)), mode="edge")
                     x = normalize(torch.from_numpy(scale_rgb(a, prep)), prep)[None].to(device)
                     with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
-                        p = model(x)["logits"].float().sigmoid()[0, 0, :height, :width].cpu().numpy()
+                        p = foreground_probability(model(x))[0, 0, :height, :width].cpu().numpy()
                     if not np.isfinite(p).all():
                         raise FloatingPointError(f"Non-finite prediction in {source}")
                     sums[top:top + height, left:left + width] += p
