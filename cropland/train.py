@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import math
 import random
 import warnings
@@ -18,21 +17,7 @@ from .data import FarmDataset, read_rows
 from .losses import combined_loss
 from .metrics import BinaryMetrics
 from .model import build_model, load_checkpoint, save_checkpoint
-
-
-def split_fingerprints(directory):
-    result, names, hashes = {}, set(), set()
-    for name in ("train", "val", "test"):
-        path = Path(directory) / f"{name}.csv"
-        rows = read_rows(path)
-        current = {r["filename"] for r in rows}
-        current_hashes = {r["image_sha256"] for r in rows}
-        if current & names or current_hashes & hashes:
-            raise ValueError(f"Data leakage: overlapping {name} split")
-        names |= current
-        hashes |= current_hashes
-        result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return result
+from .splits import split_fingerprints
 
 
 def accumulation_weight(batch_index, batch_count, batch_size, dataset_size, accumulation_steps, actual_batch_size):
@@ -74,6 +59,12 @@ def train(cfg, resume=None):
     amp = cfg["amp"] and device.type == "cuda"
     prep = load_json(cfg["preprocessing"])
     fingerprints = split_fingerprints(cfg["split_dir"])
+    if cfg.get("model_type") == "upernet_r50":
+        if cfg["image_size"] != 512:
+            raise ValueError("E4 requires the original 512 input")
+        for split, count in (("train", 719), ("val", 91)):
+            if len(read_rows(Path(cfg["split_dir"]) / f"{split}.csv")) != count:
+                raise ValueError(f"E4 requires {count} {split} images")
     run = Path(cfg["run_dir"])
     run.mkdir(parents=True, exist_ok=True)
     if (run / "last.pt").exists() and resume is None:
@@ -89,6 +80,8 @@ def train(cfg, resume=None):
     checkpoint = None
     if resume:
         model, checkpoint = load_checkpoint(resume, device)
+        if checkpoint.get("model_type", "segformer_b5") != cfg.get("model_type", "segformer_b5"):
+            raise ValueError("Resume requires the same model_type")
         if "optimizer" not in checkpoint:
             raise ValueError("Resume requires last.pt with optimizer state; best.pt is inference-only")
         if checkpoint["split_fingerprints"] != fingerprints or checkpoint["preprocessing"] != prep:
@@ -129,7 +122,7 @@ def train(cfg, resume=None):
         del checkpoint
     save_json(run / "resolved_config.json", cfg)
     save_json(run / "split_fingerprints.json", fingerprints)
-    print(f"Device={device}, AMP={amp}, model=MiT-B5, parameters={sum(p.numel() for p in model.parameters()):,}", flush=True)
+    print(f"Device={device}, AMP={amp}, model={cfg.get('model_type', 'segformer_b5')}, parameters={sum(p.numel() for p in model.parameters()):,}", flush=True)
     history_path = run / "history.json"
     history = load_json(history_path) if resume and history_path.exists() else []
     with SummaryWriter(str(run / "tensorboard"), purge_step=start if resume else None) as writer:
@@ -211,7 +204,7 @@ def train(cfg, resume=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train SegFormer-B5 with BCE + Dice and optional boundary supervision")
+    parser = argparse.ArgumentParser(description="Train cropland segmentation with dataset-wide validation IoU selection")
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--resume", type=Path, help="Resume from last.pt (best.pt is inference-only)")
     args = parser.parse_args()

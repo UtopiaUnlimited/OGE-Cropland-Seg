@@ -18,5 +18,6 @@ __pycache__/
 *.tif
 *.tiff
 *.zip
+*.zip.sha256
 
 submission/

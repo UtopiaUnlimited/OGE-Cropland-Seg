@@ -11,11 +11,13 @@ from .common import project_path, save_json
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=project_path("models/mit-b5"))
+    parser.add_argument("--repo", choices=["nvidia/mit-b5", "microsoft/resnet-50"], default="nvidia/mit-b5")
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--revision", default="main")
     parser.add_argument("--http", action="store_true", help="Use direct HTTPS streaming if the Hub transfer backend stalls")
     args = parser.parse_args()
-    repo = "nvidia/mit-b5"
+    repo = args.repo
+    args.output = args.output or project_path("models/" + repo.split("/")[1])
     info = HfApi().model_info(repo, revision=args.revision, files_metadata=True)
     names = {f.rfilename for f in info.siblings}
     weights = "model.safetensors" if "model.safetensors" in names else "pytorch_model.bin"
@@ -39,7 +41,14 @@ def main():
             print(f"Downloaded {name}", flush=True)
     else:
         snapshot_download(repo, revision=info.sha, local_dir=args.output, allow_patterns=selected)
-    save_json(args.output / "source.json", dict(repository=repo, revision=info.sha, weights=weights))
+    checksums = {}
+    for name in selected:
+        with (args.output / name).open("rb") as stream:
+            checksums[name] = hashlib.file_digest(stream, "sha256").hexdigest()
+        metadata = next(f for f in info.siblings if f.rfilename == name)
+        if metadata.lfs and checksums[name] != metadata.lfs.sha256:
+            raise RuntimeError(f"SHA256 mismatch: {name}")
+    save_json(args.output / "source.json", dict(repository=repo, revision=info.sha, weights=weights, sha256=checksums))
     print(f"Downloaded {repo}@{info.sha} to {args.output}")
 
 

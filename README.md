@@ -1,5 +1,7 @@
 # OGE-Cropland-Seg
 
+E4 UPerNet + ResNet-50 已训练完成：84轮早停，第69轮最佳，验证耕地IoU 79.7554%，阈值0.5。全部91张原始验证概率已导出。训练/推理说明见 [E4说明](docs/e4-upernet.md)，成绩与交付记录见 [E4结果](docs/result-e4-upernet-20261116.md)。交付文件 E4_UPerNet.zip 仅保存在本地，不上传权重或概率到GitHub。
+
 Transformers SegFormer-B5 耕地二值分割，支持 Windows 本地验证、Linux 服务器训练和离线 Docker 提交。
 
 2026-11-16 已合并同学提供的 E2 边界辅助模型（512×512，第26轮最佳权重，boundary_weight=0.2），并通过23项代码测试。模型来源、评估及打包状态见 [E2结果记录](docs/result-b5-boundary-e2-20261116.md)。此前512基线见 [基线报告](docs/result-b5-server-20261027.md)；最初的流程验证见 [早期验证记录](docs/validation.md)。

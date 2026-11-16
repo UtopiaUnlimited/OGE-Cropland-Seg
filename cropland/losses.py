@@ -19,6 +19,8 @@ def boundary_target(mask):
 
 def combined_loss(output, target, boundary_weight=0):
     semantic = bce_dice(output["logits"], target)
+    if "auxiliary_logits" in output:
+        semantic = semantic + output["auxiliary_weight"] * bce_dice(output["auxiliary_logits"], target)
     if boundary_weight:
         return semantic + boundary_weight * bce_dice(output["boundary"], boundary_target(target))
     return semantic

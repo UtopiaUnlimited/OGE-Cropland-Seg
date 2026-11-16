@@ -39,6 +39,9 @@ class CroplandModel(nn.Module):
 
 
 def build_model(cfg):
+    if cfg.get("model_type") == "upernet_r50":
+        from .upernet import build_upernet
+        return build_upernet(cfg)
     model = CroplandModel(boundary=cfg["boundary_weight"] > 0)
     if not cfg.get("random_init", False):
         source = Path(cfg["pretrained"])
@@ -56,7 +59,7 @@ def build_model(cfg):
 
 def save_checkpoint(path, model, preprocessing, cfg, **state):
     source_file = Path(cfg.get("pretrained", ".")) / "source.json"
-    payload = dict(format_version=1, model=model.state_dict(),
+    payload = dict(format_version=1, model_type=cfg.get("model_type", "segformer_b5"), model=model.state_dict(),
                    model_config=model.semantic.config.to_dict(), boundary=model.has_boundary,
                    pretrained_source=load_json(source_file) if source_file.is_file() else None,
                    preprocessing=preprocessing, config=cfg, **state)
@@ -70,6 +73,11 @@ def load_checkpoint(path, device="cpu"):
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)
     if checkpoint.get("format_version") != 1:
         raise ValueError("Unsupported checkpoint format")
-    model = CroplandModel(SegformerConfig.from_dict(checkpoint["model_config"]), checkpoint["boundary"])
+    if checkpoint.get("model_type", "segformer_b5") == "upernet_r50":
+        from transformers import UperNetConfig
+        from .upernet import UPerNetR50
+        model = UPerNetR50(UperNetConfig.from_dict(checkpoint["model_config"]))
+    else:
+        model = CroplandModel(SegformerConfig.from_dict(checkpoint["model_config"]), checkpoint["boundary"])
     model.load_state_dict(checkpoint["model"], strict=True)
     return model.to(device), checkpoint
