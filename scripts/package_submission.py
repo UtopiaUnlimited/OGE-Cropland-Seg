@@ -27,7 +27,7 @@ import rasterio
 import torch
 
 from cropland.common import save_json
-from cropland.metrics import BinaryMetrics
+from cropland.metrics import BinaryMetrics, BoundaryMetrics
 from cropland.train import split_fingerprints
 from scripts.check_input_compatibility import validate_input_compatibility
 
@@ -107,6 +107,8 @@ def main():
         checkpoint_epoch=state["epoch"] + 1,
         validation_iou=state["best_iou"],
         input_size=state["config"]["image_size"],
+        boundary=state["boundary"],
+        boundary_weight=state["config"]["boundary_weight"],
         preprocessing=state["preprocessing"],
         split_fingerprints=fingerprints,
         source_files={p.relative_to(ROOT).as_posix(): digest(p)
@@ -183,6 +185,7 @@ def main():
     if expected != actual:
         raise ValueError(f"Output filenames differ: missing={expected-actual}, extra={actual-expected}")
     metrics = BinaryMetrics()
+    boundaries = BoundaryMetrics()
     comparison_differences = 0
     pixels = 0
     for row in rows:
@@ -198,6 +201,7 @@ def main():
             if not np.isin(p, [0, 1]).all():
                 raise ValueError(f"Invalid class encoding: {filename}")
             metrics.update(torch.from_numpy(p), torch.from_numpy(y))
+            boundaries.update(torch.from_numpy(p), torch.from_numpy(y))
             pixels += p.size
             if args.reference:
                 with rasterio.open(args.reference / filename) as ref:
@@ -206,7 +210,9 @@ def main():
                         raise ValueError("Reference dimensions differ")
                     comparison_differences += int(np.count_nonzero(a != p))
     validation = dict(image_id=image_info["Id"], image_tag=args.image, image_bytes=image_info["Size"],
-                      checkpoint=manifest, count=len(rows), partial=False, metrics=metrics.compute(),
+                      checkpoint=manifest, count=len(rows), partial=False,
+                      metrics={**metrics.compute(), **boundaries.compute()},
+                      boundary_tolerance_px=boundaries.tolerance,
                       runtime=runtime, network="none", read_only_root=True, cpus=8,
                       configured_memory_bytes=32*1024**3, shm_bytes=16*1024**3,
                       container_exit_code=0, output_format_checked=True,

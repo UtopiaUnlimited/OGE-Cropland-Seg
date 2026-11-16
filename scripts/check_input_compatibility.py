@@ -39,11 +39,28 @@ def validate_input_compatibility(image, work, source, reference):
     for stem, suffix in (("png8", ".PNG"), ("jpg8", ".jpg"), ("jpeg8", ".JPEG")):
         path = nested / (stem + suffix)
         Image.fromarray(rgb8.transpose(1, 2, 0)).save(path)
-        with rasterio.open(path) as src:
-            decoded = src.read()
         baseline = stem + "_decoded"
-        write_image(nested / (baseline + ".tif"), decoded, "GTiff")
         pairs.append((stem, baseline))
+    # Decode codec fixtures with the tested Linux GDAL, not the Windows GDAL.
+    # JPEG decoders across platforms may round pixels differently.
+    decode = """
+from pathlib import Path
+import rasterio
+for path in Path('/fixtures/test/images/nested').iterdir():
+    if path.suffix.lower() not in {'.png', '.jpg', '.jpeg'} or path.stem == 'png16':
+        continue
+    with rasterio.open(path) as src:
+        pixels = src.read()
+    with rasterio.open(path.with_name(path.stem + '_decoded.tif'), 'w',
+                       driver='GTiff', height=pixels.shape[1], width=pixels.shape[2],
+                       count=3, dtype=pixels.dtype) as dst:
+        dst.write(pixels)
+"""
+    with (work / "decode.log").open("w", encoding="utf-8") as stream:
+        subprocess.run(["docker", "run", "--rm", "--network", "none", "--read-only",
+                        "--entrypoint", "python", "--mount",
+                        f"type=bind,source={work / 'input'},target=/fixtures",
+                        image, "-c", decode], check=True, stdout=stream, stderr=subprocess.STDOUT)
     # A label-like image outside test/images must never be selected.
     masks = work / "input/test/masks"
     masks.mkdir()
@@ -77,6 +94,7 @@ def validate_input_compatibility(image, work, source, reference):
                   recursive_discovery=True, sibling_masks_excluded=True,
                   uint16_reference_pixel_differences=0, decoded_codec_pixel_differences=0,
                   uint8_accuracy_claim=False, docker_run_arguments=command)
+    result["codec_reference_decoder"] = "same Linux container Rasterio/GDAL"
     (work / "validation.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print("INPUT COMPATIBILITY PASSED: " + str(work), flush=True)
     return result

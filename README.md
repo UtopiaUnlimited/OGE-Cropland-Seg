@@ -1,8 +1,18 @@
 # OGE-Cropland-Seg
 
-Transformers SegFormer-B5 耕地二值分割初版，支持 Windows 本地验证与 Linux 服务器训练。Docker 留到最终提交阶段。
+Transformers SegFormer-B5 耕地二值分割，支持 Windows 本地验证、Linux 服务器训练和离线 Docker 提交。
 
-本机已通过 10 项测试和完整 B5 的 256×256 GPU 小规模训练/离线推理验证。具体记录见 [验证记录](docs/validation.md)。当前检查点只用于流程检查，尚未正式训练。
+2026-11-16 已合并同学提供的 E2 边界辅助模型（512×512，第26轮最佳权重，boundary_weight=0.2），并通过23项代码测试。模型来源、评估及打包状态见 [E2结果记录](docs/result-b5-boundary-e2-20261116.md)。此前512基线见 [基线报告](docs/result-b5-server-20261027.md)；最初的流程验证见 [早期验证记录](docs/validation.md)。
+
+E2权重在本地 `runs/b5_boundary/best.pt`，不随Git分发。复现训练、评估及打包：
+
+```powershell
+python -m cropland.train --config configs/b5_boundary.yaml
+python -m cropland.evaluate --checkpoint runs/b5_boundary/best.pt --split test --output outputs/b5_boundary_e2_test --device cuda --save-png
+python scripts/package_submission.py --checkpoint runs/b5_boundary/best.pt --image oge-cropland-seg:b5-boundary-e2-20261116
+```
+
+已有权重目录时不要重新启动从头训练；给新实验设置新的run_dir。压缩包只带best.pt，没有完整训练历史或可恢复的last.pt。边界指标由最终二值分割掩膜计算，默认2像素方形邻域容差，按全数据集边界计数汇总。
 
 本研究所使用的语义分割样本数据来源于 OGE 平台（http://openge.org.cn/），版权归原作者所有。数据及衍生成果的使用遵守官方数据包 readme.md；本仓库不分发数据或权重。
 

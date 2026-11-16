@@ -15,7 +15,7 @@ from tqdm import tqdm
 from .common import get_device, project_path, save_json
 from .data import read_rows
 from .inference import predict_file
-from .metrics import BinaryMetrics
+from .metrics import BinaryMetrics, BoundaryMetrics
 from .model import load_checkpoint
 from .train import split_fingerprints
 from .visualization import save_comparison, write_gallery
@@ -46,11 +46,14 @@ def main():
     size, prep = ckpt["config"]["image_size"], ckpt["preprocessing"]
     with args.checkpoint.open("rb") as stream:
         checkpoint_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+    boundaries = BoundaryMetrics()
     protocol = dict(checkpoint=str(args.checkpoint.resolve()), checkpoint_sha256=checkpoint_sha256,
                     checkpoint_epoch=ckpt["epoch"] + 1, tile_size=size, overlap=0.25, threshold=0.5,
                     preprocessing=prep, split_fingerprints=ckpt["split_fingerprints"],
                     device=str(device), torch_version=str(torch.__version__),
                     gpu=torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+                    boundary_tolerance_px=boundaries.tolerance,
+                    boundary_matching="square neighborhood, dataset-wide boundary counts",
                     aggregation="dataset-wide confusion counts", background_included=True,
                     inference_autocast=device.type == "cuda", tta=False, postprocessing=False)
     del ckpt
@@ -64,7 +67,10 @@ def main():
         metrics.update(p, y)
         item = BinaryMetrics()
         item.update(p, y)
-        result = dict(filename=name, **item.compute())
+        image_boundaries = BoundaryMetrics(boundaries.tolerance)
+        image_boundaries.update(p, y)
+        boundaries.update(p, y)
+        result = dict(filename=name, **item.compute(), **image_boundaries.compute())
         if args.save_png:
             relative = Path("comparisons") / (Path(name).stem + ".png")
             with rasterio.open(args.data_root / "train/images" / name) as src:
@@ -73,7 +79,7 @@ def main():
             result["comparison_png"] = relative.as_posix()
         per_image.append(result)
     report = dict(split=args.split, count=len(selected), partial=len(selected) < len(rows),
-                  metrics=metrics.compute(), per_image=per_image, protocol=protocol,
+                  metrics={**metrics.compute(), **boundaries.compute()}, per_image=per_image, protocol=protocol,
                   evaluated_at_utc=datetime.now(timezone.utc).isoformat(),
                   elapsed_seconds=time.perf_counter() - started)
     save_json(args.output / "metrics.json", report)

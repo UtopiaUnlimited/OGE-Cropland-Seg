@@ -1,5 +1,15 @@
 # OGE 赛道三 Docker 提交指南
 
+## 2026-11-16 E2 边界辅助模型
+
+当前新增模型权重为 runs/b5_boundary/best.pt（第26轮，boundary_weight=0.2）。按同学给定的标签打包：
+
+    python scripts/package_submission.py --checkpoint runs/b5_boundary/best.pt --image oge-cropland-seg:b5-boundary-e2-20261116
+
+预期上传文件为 submission/oge-cropland-seg_b5-boundary-e2-20261116.tar。具体是否已验证并产出，以 [E2记录](result-b5-boundary-e2-20261116.md) 为准。不要将旧基线的tar误当成E2。下文含2026-10-27基线v2的历史示例，接口与上传流程继续适用。
+
+若从Git克隆，仍需另行取得真实E2的best.pt；包内没有last.pt、完整日志或数据。打包脚本会校验划分、记录边界分支配置、计算分割与边界指标并进行断网GPU验证。
+
 本项目按随赛事数据提供的 personal_demo/README.md（2026-09-21版本）、Dockerfile 和 2026-09-29 官方培训材料实现。本文说明的是模型上传和精度评估；赛事如另行要求方案书或其他材料，仍需按报名通知提交。
 
 ## 最终要交什么
