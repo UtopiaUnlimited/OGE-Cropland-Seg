@@ -1,5 +1,7 @@
 # OGE-Cropland-Seg
 
+2026-11-17 E4 **BCE + Dice + Lovasz hinge** 独立实验已完成：45轮早停、第30轮最佳，验证耕地IoU 79.7081%，原 E4 为79.7554%。已独立复核全部91张概率并生成PNG。本轮未提高验证IoU，继续保留原 E4 权重及提交包；详见 [实验对比结果](docs/result-e4-lovasz-20261117.md)与 [配置及曲线说明](docs/e4-lovasz.md)。
+
 E4 UPerNet + ResNet-50 已训练完成：84轮早停，第69轮最佳，验证耕地IoU 79.7554%，阈值0.5。全部91张原始验证概率已导出。训练/推理说明见 [E4说明](docs/e4-upernet.md)，成绩与交付记录见 [E4结果](docs/result-e4-upernet-20261116.md)。交付文件 E4_UPerNet.zip 仅保存在本地，不上传权重或概率到GitHub。
 
 Transformers SegFormer-B5 耕地二值分割，支持 Windows 本地验证、Linux 服务器训练和离线 Docker 提交。

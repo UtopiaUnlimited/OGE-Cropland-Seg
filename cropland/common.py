@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 from pathlib import Path
 
@@ -40,6 +41,9 @@ def load_config(path):
             raise ValueError(f"{key} must be positive or null")
     if cfg["boundary_weight"] < 0:
         raise ValueError("boundary_weight must be nonnegative")
+    weight = cfg.get("lovasz_weight", 0.)
+    if not isinstance(weight, (int, float)) or not math.isfinite(weight) or weight < 0:
+        raise ValueError("lovasz_weight must be finite and nonnegative")
     return cfg
 
 

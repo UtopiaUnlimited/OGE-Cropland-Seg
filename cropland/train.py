@@ -27,7 +27,7 @@ def accumulation_weight(batch_index, batch_count, batch_size, dataset_size, accu
     return actual_batch_size / group_samples
 
 
-def validate(model, loader, device, amp, boundary_weight, max_batches=None):
+def validate(model, loader, device, amp, boundary_weight, max_batches=None, lovasz_weight=0):
     model.eval()
     metrics, total, samples = BinaryMetrics(), 0., 0
     preview = None
@@ -38,7 +38,7 @@ def validate(model, loader, device, amp, boundary_weight, max_batches=None):
             x, y = batch["image"].to(device), batch["mask"].to(device)
             with torch.autocast(device_type=device.type, enabled=amp):
                 output = model(x)
-                loss = combined_loss(output, y, boundary_weight)
+                loss = combined_loss(output, y, boundary_weight, lovasz_weight)
             if not torch.isfinite(loss):
                 raise FloatingPointError("Non-finite validation loss")
             p = output["logits"].float().sigmoid()
@@ -51,6 +51,9 @@ def validate(model, loader, device, amp, boundary_weight, max_batches=None):
 
 
 def train(cfg, resume=None):
+    lovasz_weight = cfg.get("lovasz_weight", 0.)
+    if not isinstance(lovasz_weight, (int, float)) or not math.isfinite(lovasz_weight) or lovasz_weight < 0:
+        raise ValueError("lovasz_weight must be finite and nonnegative")
     warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
     seed_everything(cfg["seed"])
     device = get_device(cfg["device"])
@@ -86,6 +89,8 @@ def train(cfg, resume=None):
             raise ValueError("Resume requires last.pt with optimizer state; best.pt is inference-only")
         if checkpoint["split_fingerprints"] != fingerprints or checkpoint["preprocessing"] != prep:
             raise ValueError("Resume requires identical splits and preprocessing")
+        if lovasz_weight != checkpoint["config"].get("lovasz_weight", 0.):
+            raise ValueError("Resume configuration changed: lovasz_weight; use a new run_dir for a different loss")
         for key in ("image_size", "batch_size", "accumulation_steps", "epochs", "learning_rate", "weight_decay",
                     "warmup_epochs", "boundary_weight", "freeze_encoder", "seed", "max_train_batches", "max_val_batches"):
             if cfg[key] != checkpoint["config"][key]:
@@ -123,6 +128,7 @@ def train(cfg, resume=None):
     save_json(run / "resolved_config.json", cfg)
     save_json(run / "split_fingerprints.json", fingerprints)
     print(f"Device={device}, AMP={amp}, model={cfg.get('model_type', 'segformer_b5')}, parameters={sum(p.numel() for p in model.parameters()):,}", flush=True)
+    print(f"Semantic loss=BCE+Dice+{lovasz_weight:g}*LovaszHinge (mini-batch foreground IoU surrogate)", flush=True)
     history_path = run / "history.json"
     history = load_json(history_path) if resume and history_path.exists() else []
     with SummaryWriter(str(run / "tensorboard"), purge_step=start if resume else None) as writer:
@@ -145,7 +151,7 @@ def train(cfg, resume=None):
                                              cfg["accumulation_steps"], len(x))
                 with torch.autocast(device_type=device.type, enabled=amp):
                     output = model(x)
-                    loss = combined_loss(output, y, cfg["boundary_weight"])
+                    loss = combined_loss(output, y, cfg["boundary_weight"], lovasz_weight)
                 if not torch.isfinite(loss):
                     raise FloatingPointError("Non-finite training loss")
                 scaler.scale(loss * weight).backward()
@@ -162,7 +168,8 @@ def train(cfg, resume=None):
                 total += loss.item() * len(x)
                 seen += len(x)
                 bar.set_postfix(loss=f"{loss.item():.4f}")
-            stats, preview = validate(model, loaders["val"], device, amp, cfg["boundary_weight"], cfg.get("max_val_batches"))
+            stats, preview = validate(model, loaders["val"], device, amp, cfg["boundary_weight"],
+                                      cfg.get("max_val_batches"), lovasz_weight)
             improved = stats["iou"] > best
             best, stale = max(best, stats["iou"]), 0 if improved else stale + 1
             metrics = dict(epoch=epoch + 1, train_loss=total / seen, val=stats,

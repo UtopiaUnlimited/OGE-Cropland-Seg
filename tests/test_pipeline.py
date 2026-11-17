@@ -140,7 +140,8 @@ def test_checkpoint_is_self_contained_offline(tmp_path, monkeypatch):
     assert state["preprocessing"] == PREP
 
 
-def test_epoch_resume_matches_uninterrupted_training(tmp_path, monkeypatch):
+@pytest.mark.parametrize("lovasz_weight", [0., 1.])
+def test_epoch_resume_matches_uninterrupted_training(tmp_path, monkeypatch, lovasz_weight):
     import csv
     import cropland.train as training
     from cropland.common import save_json
@@ -173,6 +174,8 @@ def test_epoch_resume_matches_uninterrupted_training(tmp_path, monkeypatch):
                accumulation_steps=2, epochs=2, learning_rate=.0001, weight_decay=.01,
                warmup_epochs=0, patience=5, num_workers=0, amp=False, device="cpu",
                freeze_encoder=False, boundary_weight=.2, max_train_batches=None, max_val_batches=None)
+    if lovasz_weight:
+        cfg["lovasz_weight"] = lovasz_weight
     training.train(cfg)
     cfg["run_dir"] = str(tmp_path / "interrupted")
     original_save = training.save_checkpoint
@@ -190,3 +193,6 @@ def test_epoch_resume_matches_uninterrupted_training(tmp_path, monkeypatch):
     assert a["global_step"] == b["global_step"] == 2
     for name in a["model"]:
         assert torch.equal(a["model"][name], b["model"][name]), name
+    changed = dict(cfg, lovasz_weight=1. if lovasz_weight == 0 else 0.)
+    with pytest.raises(ValueError, match="Resume configuration changed: lovasz_weight"):
+        training.train(changed, Path(cfg["run_dir"]) / "last.pt")

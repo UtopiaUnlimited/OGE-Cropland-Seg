@@ -37,7 +37,7 @@ def main():
     # No data, last.pt, virtualenv, pretrained source weights or local absolute-path logs.
     members = {"best.pt": args.checkpoint, "validation.json": args.export / "validation.json"}
     members.update({"val_probs/" + n: args.export / "val_probs" / n for n in sorted(expected)})
-    for pattern in ("cropland/*.py", "splits/*.csv", "splits/preprocessing.json"):
+    for pattern in ("cropland/*.py", "splits/*.csv", "splits/preprocessing.json", "third_party/*/*"):
         for path in ROOT.glob(pattern):
             members[path.relative_to(ROOT).as_posix()] = path
     members["config.yaml"] = ROOT / "configs/e4_upernet_r50.yaml"

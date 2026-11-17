@@ -1,0 +1,26 @@
+# Controlled E4 loss experiment: BCE + Dice + 1.0 * Lovasz hinge.
+# Fresh ImageNet backbone initialization, identical settings to the E4 baseline.
+model_type: upernet_r50
+seed: 42
+data_root: data/farm
+split_dir: splits
+preprocessing: splits/preprocessing.json
+pretrained: models/resnet-50
+random_init: false
+run_dir: runs/e4_upernet_r50_lovasz
+image_size: 512
+batch_size: 2
+accumulation_steps: 4
+epochs: 100
+learning_rate: 0.0001
+weight_decay: 0.01
+warmup_epochs: 5
+patience: 15
+num_workers: 4
+amp: true
+device: cuda
+freeze_encoder: false
+boundary_weight: 0.0
+lovasz_weight: 1.0
+max_train_batches: null
+max_val_batches: null

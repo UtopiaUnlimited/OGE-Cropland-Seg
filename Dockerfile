@@ -25,6 +25,7 @@ COPY cropland/ /app/cropland/
 COPY submission/build/best.pt /opt/oge/best.pt
 COPY submission/build/manifest.json /opt/oge/manifest.json
 COPY third_party/e5/ /opt/oge/licenses/e5/
+COPY third_party/lovasz/ /opt/oge/licenses/lovasz/
 RUN python -c "import hashlib,json; p='/opt/oge/'; m=json.load(open(p+'manifest.json')); f=open(p+'best.pt','rb'); assert hashlib.file_digest(f,'sha256').hexdigest()==m['checkpoint_sha256']" \
     && python -m cropland.inference --help
 LABEL org.opencontainers.image.title="OGE Cropland Segmentation" \

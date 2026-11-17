@@ -12,3 +12,5 @@
 !third_party/
 !third_party/e5/
 !third_party/e5/*
+!third_party/lovasz/
+!third_party/lovasz/*
